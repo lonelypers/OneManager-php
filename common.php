@@ -627,10 +627,8 @@ function config_oauth()
     if (getConfig('Drive_ver')=='CN') {
         // CN 21Vianet
         // https://portal.azure.cn
-        //$_SERVER['client_id'] = '04c3ca0b-8d07-4773-85ad-98b037d25631';
-        //$_SERVER['client_secret'] = 'h8@B7kFVOmj0+8HKBWeNTgl@pU/z4yLB'; // expire 20200902
-        $_SERVER['client_id'] = 'b15f63f5-8b72-48b5-af69-8cab7579bff7';
-        $_SERVER['client_secret'] = '0IIuZ1Kcq_YI3NrkZFwsniEo~BoP~8_M22';
+        $_SERVER['client_id'] = '31f3bed5-b9d9-4173-86a4-72c73d278617';
+        $_SERVER['client_secret'] = 'P5-ZNtFK-tT90J.We_-DcsuB8uV7AfjL8Y';
         $_SERVER['oauth_url'] = 'https://login.partner.microsoftonline.cn/common/oauth2/v2.0/';
         $_SERVER['api_url'] = 'https://microsoftgraph.chinacloudapi.cn/v1.0/me/drive/root';
         $_SERVER['scope'] = 'https://microsoftgraph.chinacloudapi.cn/Files.ReadWrite.All offline_access';
@@ -1046,6 +1044,10 @@ function get_thumbnails_url($path = '/', $location = 0)
 
 function bigfileupload($path)
 {
+    if (!$_SERVER['admin']) {
+        if (!is_guestup_path($path)) return output('Not_Guest_Upload_Folder', 400);
+        if (strpos($_GET['upbigfilename'], '../')!==false) return output('Not_Allow_Cross_Path', 400);
+    }
     $path1 = path_format($_SERVER['list_path'] . path_format($path));
     if (substr($path1,-1)=='/') $path1=substr($path1,0,-1);
     if ($_GET['upbigfilename']!=''&&$_GET['filesize']>0) {
@@ -1118,53 +1120,67 @@ function adminoperate($path)
 {
     $path1 = path_format($_SERVER['list_path'] . path_format($path));
     if (substr($path1,-1)=='/') $path1=substr($path1,0,-1);
+    $tmpget = $_GET;
+    $tmppost = $_POST;
     $tmparr['statusCode'] = 0;
-    if (isset($_GET['rename_newname'])&&$_GET['rename_newname']!=$_GET['rename_oldname'] && $_GET['rename_newname']!='') {
+    if ( (isset($tmpget['rename_newname'])&&$tmpget['rename_newname']!=$tmpget['rename_oldname'] && $tmpget['rename_newname']!='') || (isset($tmppost['rename_newname'])&&$tmppost['rename_newname']!=$tmppost['rename_oldname'] && $tmppost['rename_newname']!='') ) {
+        if (isset($tmppost['rename_newname'])) $VAR = 'tmppost';
+        else $VAR = 'tmpget';
         // rename 重命名
-        $oldname = spurlencode($_GET['rename_oldname']);
+        $oldname = spurlencode(${$VAR}['rename_oldname']);
         $oldname = path_format($path1 . '/' . $oldname);
-        $data = '{"name":"' . $_GET['rename_newname'] . '"}';
+        $data = '{"name":"' . ${$VAR}['rename_newname'] . '"}';
                 //echo $oldname;
         $result = MSAPI('PATCH',$oldname,$data,$_SERVER['access_token']);
         //savecache('path_' . $path1, json_decode('{}',true), $_SERVER['disktag'], 1);
         return output($result['body'], $result['stat']);
     }
-    if (isset($_GET['delete_name'])) {
+    if (isset($tmpget['delete_name']) || isset($tmppost['delete_name'])) {
+        if (isset($tmppost['delete_name'])) $VAR = 'tmppost';
+        else $VAR = 'tmpget';
         // delete 删除
-        $filename = spurlencode($_GET['delete_name']);
+        $filename = spurlencode(${$VAR}['delete_name']);
         $filename = path_format($path1 . '/' . $filename);
                 //echo $filename;
         $result = MSAPI('DELETE', $filename, '', $_SERVER['access_token']);
         //savecache('path_' . $path1, json_decode('{}',true), $_SERVER['disktag'], 1);
         return output($result['body'], $result['stat']);
     }
-    if (isset($_GET['operate_action'])&&$_GET['operate_action']==getconstStr('Encrypt')) {
+    if ( (isset($tmpget['operate_action'])&&$tmpget['operate_action']==getconstStr('Encrypt')) || (isset($tmppost['operate_action'])&&$tmppost['operate_action']==getconstStr('Encrypt')) ) {
+        if (isset($tmppost['operate_action'])) $VAR = 'tmppost';
+        else $VAR = 'tmpget';
         // encrypt 加密
         if (getConfig('passfile')=='') return message(getconstStr('SetpassfileBfEncrypt'),'',403);
-        if ($_GET['encrypt_folder']=='/') $_GET['encrypt_folder']=='';
-        $foldername = spurlencode($_GET['encrypt_folder']);
+        if (${$VAR}['encrypt_folder']=='/') ${$VAR}['encrypt_folder']=='';
+        $foldername = spurlencode(${$VAR}['encrypt_folder']);
         $filename = path_format($path1 . '/' . $foldername . '/' . urlencode(getConfig('passfile')));
                 //echo $foldername;
-        $result = MSAPI('PUT', $filename, $_GET['encrypt_newpass'], $_SERVER['access_token']);
+        $result = MSAPI('PUT', $filename, ${$VAR}['encrypt_newpass'], $_SERVER['access_token']);
         $path1 = path_format($path1 . '/' . $foldername );
         if ($path1!='/'&&substr($path1,-1)=='/') $path1=substr($path1,0,-1);
         savecache('path_' . $path1 . '/?password', '', $_SERVER['disktag'], 1);
         return output($result['body'], $result['stat']);
     }
-    if (isset($_GET['move_folder'])) {
+    if (isset($tmpget['move_folder']) || isset($tmppost['move_folder'])) {
+        if (isset($tmppost['move_folder'])) $VAR = 'tmppost';
+        else $VAR = 'tmpget';
         // move 移动
         $moveable = 1;
-        if ($path == '/' && $_GET['move_folder'] == '/../') $moveable=0;
-        if ($_GET['move_folder'] == $_GET['move_name']) $moveable=0;
+        if ($path == '/' && ${$VAR}['move_folder'] == '/../') $moveable=0;
+        if (${$VAR}['move_folder'] == ${$VAR}['move_name']) $moveable=0;
         if ($moveable) {
-            $filename = spurlencode($_GET['move_name']);
+            $filename = spurlencode(${$VAR}['move_name']);
             $filename = path_format($path1 . '/' . $filename);
-            $foldername = path_format('/'.urldecode($path1).'/'.$_GET['move_folder']);
+            if (${$VAR}['move_folder'] == '/../') {
+                $foldername = path_format('/' . urldecode($path1) . '/');
+                $foldername = substr($foldername, 0, -1);
+                $foldername = splitlast($foldername, '/')[0];
+            } else $foldername = path_format('/' . urldecode($path1) . '/' . ${$VAR}['move_folder']);
             $data = '{"parentReference":{"path": "/drive/root:'.$foldername.'"}}';
             $result = MSAPI('PATCH', $filename, $data, $_SERVER['access_token']);
             //savecache('path_' . $path1, json_decode('{}',true), $_SERVER['disktag'], 1);
-            if ($_GET['move_folder'] == '/../') $path2 = path_format( substr($path1, 0, strrpos($path1, '/')) . '/' );
-            else $path2 = path_format( $path1 . '/' . $_GET['move_folder'] . '/' );
+            if (${$VAR}['move_folder'] == '/../') $path2 = path_format( substr($path1, 0, strrpos($path1, '/')) . '/' );
+            else $path2 = path_format( $path1 . '/' . ${$VAR}['move_folder'] . '/' );
             if ($path2!='/'&&substr($path2,-1)=='/') $path2=substr($path2,0,-1);
             savecache('path_' . $path2, json_decode('{}',true), $_SERVER['disktag'], 1);
             return output($result['body'], $result['stat']);
@@ -1172,11 +1188,13 @@ function adminoperate($path)
             return output('{"error":"'.getconstStr('CannotMove').'"}', 403);
         }
     }
-    if (isset($_GET['copy_name'])) {
+    if (isset($tmpget['copy_name']) || isset($tmppost['copy_name'])) {
+        if (isset($tmppost['copy_name'])) $VAR = 'tmppost';
+        else $VAR = 'tmpget';
         // copy 复制
-        $filename = spurlencode($_GET['copy_name']);
+        $filename = spurlencode(${$VAR}['copy_name']);
         $filename = path_format($path1 . '/' . $filename);
-        $namearr = splitlast($_GET['copy_name'], '.');
+        $namearr = splitlast(${$VAR}['copy_name'], '.');
         if ($namearr[0]!='') {
             $newname = $namearr[0] . ' (' . getconstStr('Copy') . ')';
             if ($namearr[1]!='') $newname .= '.' . $namearr[1];
@@ -1203,14 +1221,14 @@ function adminoperate($path)
         }
         //echo $result['stat'].$result['body'];
             //savecache('path_' . $path1, json_decode('{}',true), $_SERVER['disktag'], 1);
-            //if ($_GET['move_folder'] == '/../') $path2 = path_format( substr($path1, 0, strrpos($path1, '/')) . '/' );
-            //else $path2 = path_format( $path1 . '/' . $_GET['move_folder'] . '/' );
+            //if ($tmpget['move_folder'] == '/../') $path2 = path_format( substr($path1, 0, strrpos($path1, '/')) . '/' );
+            //else $path2 = path_format( $path1 . '/' . $tmpget['move_folder'] . '/' );
             //savecache('path_' . $path2, json_decode('{}',true), $_SERVER['disktag'], 1);
         return output($result['body'], $result['stat']);
     }
-    if (isset($_POST['editfile'])) {
+    if (isset($tmppost['editfile'])) {
         // edit 编辑
-        $data = $_POST['editfile'];
+        $data = $tmppost['editfile'];
         /*TXT一般不会超过4M，不用二段上传
         $filename = $path1 . ':/createUploadSession';
         $response=MSAPI('POST',$filename,'{"item": { "@microsoft.graph.conflictBehavior": "replace"  }}',$_SERVER['access_token']);
@@ -1221,21 +1239,23 @@ function adminoperate($path)
         $resultarry = json_decode($result,true);
         if (isset($resultarry['error'])) return message($resultarry['error']['message']. '<hr><a href="javascript:history.back(-1)">'.getconstStr('Back').'</a>','Error',403);
     }
-    if (isset($_GET['create_name'])) {
+    if (isset($tmpget['create_name']) || isset($tmppost['create_name'])) {
+        if (isset($tmppost['create_name'])) $VAR = 'tmppost';
+        else $VAR = 'tmpget';
         // create 新建
-        if ($_GET['create_type']=='file') {
-            $filename = spurlencode($_GET['create_name']);
+        if (${$VAR}['create_type']=='file') {
+            $filename = spurlencode(${$VAR}['create_name']);
             $filename = path_format($path1 . '/' . $filename);
-            $result = MSAPI('PUT', $filename, $_GET['create_text'], $_SERVER['access_token']);
+            $result = MSAPI('PUT', $filename, ${$VAR}['create_text'], $_SERVER['access_token']);
         }
-        if ($_GET['create_type']=='folder') {
-            $data = '{ "name": "' . $_GET['create_name'] . '",  "folder": { },  "@microsoft.graph.conflictBehavior": "rename" }';
+        if (${$VAR}['create_type']=='folder') {
+            $data = '{ "name": "' . ${$VAR}['create_name'] . '",  "folder": { },  "@microsoft.graph.conflictBehavior": "rename" }';
             $result = MSAPI('children', $path1, $data, $_SERVER['access_token']);
         }
         //savecache('path_' . $path1, json_decode('{}',true), $_SERVER['disktag'], 1);
         return output($result['body'], $result['stat']);
     }
-    if (isset($_GET['RefreshCache'])) {
+    if (isset($tmpget['RefreshCache'])) {
         $path1 = path_format($_SERVER['list_path'] . path_format($path));
         if ($path1!='/'&&substr($path1,-1)=='/') $path1=substr($path1,0,-1);
         savecache('path_' . $path1 . '/?password', '', $_SERVER['disktag'], 1);
@@ -1997,7 +2017,7 @@ function render_list($path = '', $files = '')
     if (strpos(__DIR__, ':')) $slash = '\\';
 
     if (isset($files['children']['index.html']) && !$_SERVER['admin']) {
-        $htmlcontent = fetch_files(spurlencode(path_format($path . '/index.html'),'/'))['content'];
+        $htmlcontent = fetch_files(spurlencode(path_format(urldecode($path) . '/index.html'),'/'))['content'];
         return output($htmlcontent['body'], $htmlcontent['stat']);
     }
     $path = str_replace('%20','%2520',$path);
